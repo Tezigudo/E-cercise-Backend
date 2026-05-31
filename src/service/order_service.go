@@ -95,15 +95,20 @@ func (s *orderService) CreateOrder(req request.PlaceOrderCartRequest, user *mode
 			return nil, fmt.Errorf("failed to fetch equipment option %s: %v", cartItem.EquipmentOptionID, err)
 		}
 
-		if equipmentOption.RemainingProducts < cartItem.Quantity {
+		// Atomic, contention-safe decrement. The WHERE guards against two
+		// concurrent checkouts both passing a read-time stock check and
+		// overselling; RowsAffected == 0 means the stock ran out in between.
+		result := tx.Model(&model.EquipmentOption{}).
+			Where("id = ? AND remaining_products >= ?", cartItem.EquipmentOptionID, cartItem.Quantity).
+			UpdateColumn("remaining_products", gorm.Expr("remaining_products - ?", cartItem.Quantity))
+		if result.Error != nil {
+			logger.Log.WithError(result.Error).Error("Failed to update inventory", map[string]interface{}{"equipment_option_id": cartItem.EquipmentOptionID})
+			tx.Rollback()
+			return nil, fmt.Errorf("failed to update inventory: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
 			tx.Rollback()
 			return nil, fmt.Errorf("insufficient stock for option %s", cartItem.EquipmentOptionID)
-		}
-		equipmentOption.RemainingProducts -= cartItem.Quantity
-		if err := tx.Save(equipmentOption).Error; err != nil {
-			logger.Log.WithError(err).Error("Failed to update inventory", map[string]interface{}{"equipment_option_id": cartItem.EquipmentOptionID})
-			tx.Rollback()
-			return nil, fmt.Errorf("failed to update inventory: %v", err)
 		}
 
 		totalPrice += float64(cartItem.Quantity) * equipmentOption.Price

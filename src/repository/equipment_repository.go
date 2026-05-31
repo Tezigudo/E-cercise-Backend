@@ -150,7 +150,8 @@ func (r *equipmentRepository) SaveEquipmentFeature(tx *gorm.DB, feature model.Eq
 }
 
 func (r *equipmentRepository) SaveAttributes(tx *gorm.DB, attr *model.Attribute) error {
-	return tx.Save(&attr).Error
+	// attr is already *model.Attribute — pass it directly (not &attr / **).
+	return tx.Save(attr).Error
 }
 
 func (r *equipmentRepository) DeletesAttributes(tx *gorm.DB, attrID []uuid.UUID) error {
@@ -170,7 +171,9 @@ func (r *equipmentRepository) SaveEquipment(tx *gorm.DB, equipment *model.Equipm
 	// own repo calls; a full-graph Save here cascades an UPSERT over the
 	// preloaded associations and RE-INSERTS rows that were just deleted in this
 	// same request (features.deleted / additional_field.deleted silently undone).
-	return tx.Omit(clause.Associations).Save(&equipment).Error
+	// equipment is already *model.Equipment — pass it directly, not &equipment
+	// (a **model.Equipment confuses GORM's reflection).
+	return tx.Omit(clause.Associations).Save(equipment).Error
 }
 
 func (r *equipmentRepository) CreateEquipmentFeatures(tx *gorm.DB, features []model.EquipmentFeature) error {
