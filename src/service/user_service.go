@@ -143,8 +143,11 @@ func (s *userService) UpdateUserProfile(user *model.User, req request.UpdateUser
 		}
 	}()
 
-	// Step 1: Check email uniqueness
-	if req.Email != nil {
+	// Step 1: Check email uniqueness. Skip when the email is unchanged — the
+	// profile edit form re-sends the user's own email, and FindByEmail would
+	// then match the user's OWN row and roll back the ENTIRE update (every
+	// field), so "save profile" silently persists nothing.
+	if req.Email != nil && !strings.EqualFold(*req.Email, user.Email) {
 		existingUser, err := s.userRepo.FindByEmail(*req.Email)
 		if existingUser != nil || err != nil {
 			tx.Rollback()

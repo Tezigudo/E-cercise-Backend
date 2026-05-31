@@ -44,7 +44,10 @@ func DatabaseConnection() *gorm.DB {
 		panic(err)
 	}
 
-	err = db.AutoMigrate(&model.User{}, &model.Equipment{}, &model.EquipmentOption{}, &model.EquipmentFeature{}, &model.Image{},
+	// &model.Goal{} first: User has a FK to goals, so the goals table must exist
+	// before User is migrated. It was omitted here, so on a fresh DB the goals
+	// table is never created (GET /api/goals and goal_id references then fail).
+	err = db.AutoMigrate(&model.Goal{}, &model.User{}, &model.Equipment{}, &model.EquipmentOption{}, &model.EquipmentFeature{}, &model.Image{},
 		&model.Attribute{}, &model.Cart{}, &model.LineEquipment{}, &model.Order{}, &model.MuscleGroup{}, &model.Tag{}, &model.UserPreference{})
 
 	if err != nil {
@@ -80,12 +83,23 @@ func migrateEnum(db *gorm.DB) error {
 				 	'Placed',
 					'Paid',
 					'Shipped out',
+					'To Receive',
 					'Received'
 				);
 			END IF;
 		END$$;
 	`).Error
 
+	if err != nil {
+		return err
+	}
+
+	// Back-fill 'To Receive' for databases whose order_status enum predates it
+	// (the CREATE above only fires for a brand-new type). The Go enum
+	// (enum.OrderToReceive) and the "Shipped out" -> "To Receive" transition
+	// write this value, so an enum missing it makes PUT /order/status fail with
+	// SQLSTATE 22P02. Idempotent.
+	err = db.Exec(`ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'To Receive' BEFORE 'Received';`).Error
 	if err != nil {
 		return err
 	}

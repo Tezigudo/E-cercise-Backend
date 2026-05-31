@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/E-cercise/E-cercise/src/data/request"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 func ValidateAddLineEquipment() fiber.Handler {
@@ -39,6 +40,15 @@ func ValidateModifyLineEquipmentRequest() fiber.Handler {
 			if item.Quantity <= 0 {
 				return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 					"error": fmt.Sprintf("Quantity of lineEquipmentID: %v must more than 0", item.LineEquipmentID),
+				})
+			}
+			// Reject non-UUID ids here. Otherwise uuid.MustParse panics in the
+			// service, the deferred recover() rolls back and returns nil, and the
+			// controller reports HTTP 200 "cart modified successfully" with zero
+			// writes — a silent no-op.
+			if _, err := uuid.Parse(item.LineEquipmentID); err != nil {
+				return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": fmt.Sprintf("Invalid line_equipment_id: %q", item.LineEquipmentID),
 				})
 			}
 		}

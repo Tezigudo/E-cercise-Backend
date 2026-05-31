@@ -165,7 +165,12 @@ func (r *equipmentRepository) DeletesAttributes(tx *gorm.DB, attrID []uuid.UUID)
 }
 
 func (r *equipmentRepository) SaveEquipment(tx *gorm.DB, equipment *model.Equipment) error {
-	return tx.Save(&equipment).Error
+	// Omit(clause.Associations): persist ONLY the equipment's own columns. The
+	// caller already manages options/features/attributes/muscle-groups via their
+	// own repo calls; a full-graph Save here cascades an UPSERT over the
+	// preloaded associations and RE-INSERTS rows that were just deleted in this
+	// same request (features.deleted / additional_field.deleted silently undone).
+	return tx.Omit(clause.Associations).Save(&equipment).Error
 }
 
 func (r *equipmentRepository) CreateEquipmentFeatures(tx *gorm.DB, features []model.EquipmentFeature) error {

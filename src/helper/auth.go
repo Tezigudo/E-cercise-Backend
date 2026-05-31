@@ -13,7 +13,13 @@ import (
 	"time"
 )
 
-var secretKey = []byte(config.JwtSecret)
+// secretKey returns the JWT signing key, read LAZILY. A package-level
+// `var secretKey = []byte(config.JwtSecret)` would be evaluated at import time —
+// before main() calls config.Init() — capturing the zero value "" and making
+// every token signed AND verified with an empty key (i.e. trivially forgeable).
+func secretKey() []byte {
+	return []byte(config.JwtSecret)
+}
 
 func CreateToken(userId uuid.UUID, name string, lastName string, role enum.Role) (string, error) {
 
@@ -29,7 +35,7 @@ func CreateToken(userId uuid.UUID, name string, lastName string, role enum.Role)
 		"role":    role,
 		"exp":     time.Now().Add(time.Hour * 3).In(location).Unix(), // TODO: Need to change
 	})
-	tokenString, err := token.SignedString(secretKey)
+	tokenString, err := token.SignedString(secretKey())
 
 	if err != nil {
 		return "", err
@@ -43,7 +49,7 @@ func GetClaimFromToken(jwtToken string) (jwt.MapClaims, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return secretKey, nil
+		return secretKey(), nil
 	})
 
 	if err != nil || !token.Valid {

@@ -171,7 +171,13 @@ func (s *cartService) ModifyLineEquipmentInCart(req request.CartItemPutRequest, 
 
 	for _, item := range req.Items {
 
-		cartItem, exists := cartItemsMap[uuid.MustParse(item.LineEquipmentID)]
+		lineID, err := uuid.Parse(item.LineEquipmentID)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("invalid line_equipment_id %q: %w", item.LineEquipmentID, err)
+		}
+
+		cartItem, exists := cartItemsMap[lineID]
 		if !exists {
 			tx.Rollback()
 			return fmt.Errorf("failed to find cart item with id %v", item.LineEquipmentID)
@@ -190,7 +196,7 @@ func (s *cartService) ModifyLineEquipmentInCart(req request.CartItemPutRequest, 
 			return fmt.Errorf("remaining products is less than quantity")
 		}
 
-		if err := s.cartRepo.ModifyLineItem(tx, uuid.MustParse(item.LineEquipmentID), item.Quantity); err != nil {
+		if err := s.cartRepo.ModifyLineItem(tx, lineID, item.Quantity); err != nil {
 			tx.Rollback()
 			logger.Log.WithError(err).Error("cant modify line equipment with ID:", item.LineEquipmentID)
 			return err

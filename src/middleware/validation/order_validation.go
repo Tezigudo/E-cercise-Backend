@@ -16,6 +16,14 @@ func ValidateCheckoutOrder() fiber.Handler {
 			})
 		}
 
+		// Reject empty checkouts — otherwise the service commits a real but
+		// zero-item, $0 "ghost" order.
+		if len(req.LineEquipments) == 0 {
+			return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "line_equipments must not be empty",
+			})
+		}
+
 		ctx.Locals("req", req)
 		return ctx.Next()
 	}
