@@ -25,5 +25,5 @@ type RecommendedResponseDTO []struct {
 	EquipmentName    string    `json:"equipment_name"`
 	OptionID         uuid.UUID `json:"option_id"`
 	Price            float64   `json:"price"`
-	RemainingProduct int64     `json:"remaining_product,omitempty"`
+	RemainingProduct int64     `json:"remaining_products,omitempty"`
 }

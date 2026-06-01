@@ -2,7 +2,6 @@ package repository
 
 import (
 	"github.com/E-cercise/E-cercise/src/helper"
-	"github.com/E-cercise/E-cercise/src/logger"
 	"github.com/E-cercise/E-cercise/src/model"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -120,9 +119,12 @@ func (r *equipmentRepository) FindByID(eqID uuid.UUID) (*model.Equipment, error)
 }
 
 func (r *equipmentRepository) FindOptionByID(optionID uuid.UUID) (*model.EquipmentOption, error) {
-	var opt *model.EquipmentOption
-	err := r.db.Preload("Images").Find(&opt, "id = ?", optionID).Error
-	return opt, err
+	var opt model.EquipmentOption
+	err := r.db.Preload("Images").First(&opt, "id = ?", optionID).Error
+	if err != nil {
+		return nil, err
+	}
+	return &opt, nil
 }
 
 func (r *equipmentRepository) FindByIDTransaction(tx *gorm.DB, eqID uuid.UUID) (*model.Equipment, error) {
@@ -155,14 +157,7 @@ func (r *equipmentRepository) SaveAttributes(tx *gorm.DB, attr *model.Attribute)
 }
 
 func (r *equipmentRepository) DeletesAttributes(tx *gorm.DB, attrID []uuid.UUID) error {
-	logger.Log.Infof("🧪 DEBUG Delete Attribute IDs: %v", attrID)
-
-	debugTx := tx.Session(&gorm.Session{Logger: tx.Logger.LogMode(4)}) // 4 = Info level
-
-	result := debugTx.Where("id IN ?", attrID).Delete(&model.Attribute{})
-	logger.Log.Infof("🧾 Rows affected in attribute delete: %d", result.RowsAffected)
-
-	return result.Error
+	return tx.Where("id IN ?", attrID).Delete(&model.Attribute{}).Error
 }
 
 func (r *equipmentRepository) SaveEquipment(tx *gorm.DB, equipment *model.Equipment) error {
@@ -237,8 +232,8 @@ func (r *equipmentRepository) FindByCategory(category string) ([]model.Equipment
 	query := r.db.Model(&model.Equipment{})
 
 	if category != "" {
-    	query = query.Where("equipment.category = ?", category)
-    }
+		query = query.Where("equipment.category = ?", category)
+	}
 
 	err := query.
 		Preload("MuscleGroups").
@@ -250,6 +245,6 @@ func (r *equipmentRepository) FindByCategory(category string) ([]model.Equipment
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return equipments, nil
 }

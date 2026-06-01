@@ -32,7 +32,7 @@ func (c *OrderController) CreateOrder(ctx *fiber.Ctx) error {
 		return err
 	}
 
-	orderID, err := c.OrderService.CreateOrder(req, user);
+	orderID, err := c.OrderService.CreateOrder(req, user)
 	if err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
@@ -41,7 +41,7 @@ func (c *OrderController) CreateOrder(ctx *fiber.Ctx) error {
 
 	return ctx.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"order_id": orderID,
-		"message": "Order created successfully",
+		"message":  "Order created successfully",
 	})
 }
 

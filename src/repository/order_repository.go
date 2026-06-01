@@ -38,7 +38,7 @@ func (r *orderRepository) FindByID(orderID uuid.UUID) (*model.Order, error) {
 	// First (not Find): a missing order must surface gorm.ErrRecordNotFound so
 	// callers can return 404. Find leaves a zero-value Order with a nil error,
 	// which leaks an empty 200 stub for non-existent IDs.
-	err := r.db.Preload("LineEquipments").First(&order, "id = ?", orderID).Error
+	err := r.db.Preload("LineEquipments").Preload("User").First(&order, "id = ?", orderID).Error
 	return &order, err
 }
 

@@ -5,6 +5,9 @@ import (
 )
 
 func FindPrimaryImageFromEquipment(equipment model.Equipment) *model.Image {
+	if len(equipment.EquipmentOptions) == 0 {
+		return nil
+	}
 	for _, image := range equipment.EquipmentOptions[0].Images {
 		if image.IsPrimary {
 			return &image
@@ -20,6 +23,16 @@ func FindPrimaryImage(equipmentOption model.EquipmentOption) *model.Image {
 		}
 	}
 	return nil
+}
+
+// PrimaryImageURL returns the CloudinaryPath of the primary image in
+// equipmentOption, or fallback if no primary image exists.
+func PrimaryImageURL(opt model.EquipmentOption, fallback string) string {
+	img := FindPrimaryImage(opt)
+	if img == nil {
+		return fallback
+	}
+	return img.CloudinaryPath
 }
 
 func GetMuscleGroupIDFromEquipment(equipment model.Equipment) []string {

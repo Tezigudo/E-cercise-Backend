@@ -71,9 +71,12 @@ func InitRouter(db *gorm.DB) *fiber.App {
 	app.Use(func(c *fiber.Ctx) error {
 		err := c.Next()
 		if err != nil {
-			logger2.Log.WithError(err).Error("error occured: ", err.Error())
+			if e, ok := err.(*fiber.Error); ok {
+				return c.Status(e.Code).JSON(fiber.Map{"error": e.Message})
+			}
+			logger2.Log.WithError(err).Error("unhandled error: ", err.Error())
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": err.Error(),
+				"error": "internal server error",
 			})
 		}
 		return nil

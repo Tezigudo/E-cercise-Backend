@@ -17,6 +17,9 @@ var (
 	JwtSecret                    string
 	FrontendBaseURL              string
 	RecommendationServiceBaseUrl string
+	RecommenderInternalToken     string
+	CookieSecure                 bool
+	CookieSameSite               string
 	CloudinaryCloudName          string
 	CloudinaryApiKey             string
 	CloudinaryApiSecret          string
@@ -35,7 +38,10 @@ func Init() {
 	DatabaseName = getEnv("DATABASE_NAME", "crud")
 	JwtSecret = getEnv("JWT_SECRET", "secret")
 	FrontendBaseURL = getEnv("FRONTEND_BASE_URL", "localhost:5173")
-	RecommendationServiceBaseUrl = getEnv("RECOMMENDATION_SERVICE_BASE_URL", "localhost:8080")
+	RecommendationServiceBaseUrl = getEnv("RECOMMENDATION_SERVICE_BASE_URL", "http://localhost:8000")
+	RecommenderInternalToken = getEnv("RECOMMENDER_INTERNAL_TOKEN", "")
+	CookieSecure = getEnv("COOKIE_SECURE", "false") == "true"
+	CookieSameSite = getEnv("COOKIE_SAMESITE", "Lax")
 	CloudinaryCloudName = getEnv("CLOUDINARY_CLOUD_NAME", "")
 	CloudinaryApiKey = getEnv("CLOUDINARY_API_KEY", "")
 	CloudinaryApiSecret = getEnv("CLOUDINARY_API_SECRET", "")

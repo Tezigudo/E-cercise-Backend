@@ -3,13 +3,13 @@ package controller
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"github.com/E-cercise/E-cercise/src/data/request"
 	"github.com/E-cercise/E-cercise/src/helper"
 	"github.com/E-cercise/E-cercise/src/service"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"strings"
 )
 
 type CartController struct {
@@ -54,21 +54,23 @@ func (c *CartController) AddEquipmentToCart(ctx *fiber.Ctx) error {
 }
 
 func (c *CartController) DeleteItemInCart(ctx *fiber.Ctx) error {
-	//TODO more: validate that another user cant delete item of another user cart
 	lineEquipmentID := uuid.MustParse(ctx.Params("line_equipment_id"))
 
-	status, err := c.CartService.DeleteLineEquipmentInCart(lineEquipmentID)
-
+	user, err := helper.GetCurrentUser(ctx)
 	if err != nil {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err})
+		return err
 	}
 
-	if status == "204" {
-		return ctx.Status(fiber.StatusNoContent).JSON(fiber.Map{"message": "this line equipment not found or have deleted"})
+	count, err := c.CartService.DeleteLineEquipmentInCart(user.ID, lineEquipmentID)
+	if err != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if count == 0 {
+		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "line equipment not found or not in your cart"})
 	}
 
 	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{"message": fmt.Sprintf("line equipment id %v has been deleted successfully", lineEquipmentID)})
-
 }
 
 func (c *CartController) GetCartItems(ctx *fiber.Ctx) error {

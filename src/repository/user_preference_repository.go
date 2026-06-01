@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"fmt"
+
 	"github.com/E-cercise/E-cercise/src/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -20,17 +22,22 @@ func NewUserPreferenceRepository(db *gorm.DB) UserPreferenceRepository {
 }
 
 func (r *userPrefRepo) SetPreferences(userID uuid.UUID, tagIDs []uuid.UUID) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userID).Delete(&model.UserPreference{}).Error; err != nil {
+			return fmt.Errorf("failed to delete existing preferences: %w", err)
+		}
 
-	r.db.Where("user_id = ?", userID).Delete(&model.UserPreference{})
+		for _, tagID := range tagIDs {
+			if err := tx.Create(&model.UserPreference{
+				UserID: userID,
+				TagID:  tagID,
+			}).Error; err != nil {
+				return fmt.Errorf("failed to create preference for tag %s: %w", tagID, err)
+			}
+		}
 
-	for _, tagID := range tagIDs {
-		r.db.Create(&model.UserPreference{
-			UserID: userID,
-			TagID:  tagID,
-		})
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func (r *userPrefRepo) GetPreferences(userID uuid.UUID) ([]model.Tag, error) {

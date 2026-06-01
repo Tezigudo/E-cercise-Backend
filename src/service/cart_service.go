@@ -3,6 +3,8 @@ package service
 import (
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/E-cercise/E-cercise/src/data/request"
 	"github.com/E-cercise/E-cercise/src/data/response"
 	"github.com/E-cercise/E-cercise/src/helper"
@@ -15,7 +17,7 @@ import (
 
 type CartService interface {
 	AddEquipmentToCart(req request.CartItemPostRequest, userID uuid.UUID) error
-	DeleteLineEquipmentInCart(lineEquipmentID uuid.UUID) (string, error)
+	DeleteLineEquipmentInCart(userID uuid.UUID, lineEquipmentID uuid.UUID) (int64, error)
 	GetAllLineEquipmentInCart(userID uuid.UUID) (*response.GetCartItemResponse, error)
 	ModifyLineEquipmentInCart(req request.CartItemPutRequest, userID uuid.UUID) error
 	ClearAllLineEquipmentInCart(userID uuid.UUID) error
@@ -87,20 +89,18 @@ func (s *cartService) AddEquipmentToCart(req request.CartItemPostRequest, userID
 	return nil
 }
 
-func (s *cartService) DeleteLineEquipmentInCart(lineEquipmentID uuid.UUID) (string, error) {
-
-	recordCount, err := s.cartRepo.DeleteLineItem(lineEquipmentID)
+func (s *cartService) DeleteLineEquipmentInCart(userID uuid.UUID, lineEquipmentID uuid.UUID) (int64, error) {
+	count, err := s.cartRepo.DeleteLineItem(userID, lineEquipmentID)
 	if err != nil {
 		logger.Log.WithError(err).Error("error deleting line item ID: ", lineEquipmentID)
-		return "error", err
+		return 0, err
 	}
 
-	if recordCount == 0 {
-		logger.Log.Warning("user trying to delete line item that doesnt exists")
-		return "204", nil
+	if count == 0 {
+		logger.Log.Warning("user trying to delete line item that doesnt exists or does not belong to user")
 	}
 
-	return "success", nil
+	return count, nil
 }
 
 func (s *cartService) GetAllLineEquipmentInCart(userID uuid.UUID) (*response.GetCartItemResponse, error) {
@@ -118,17 +118,19 @@ func (s *cartService) GetAllLineEquipmentInCart(userID uuid.UUID) (*response.Get
 
 		equipment, err := s.equipmentRepo.FindByID(line.EquipmentID)
 		if err != nil {
-			logger.Log.WithError(err).Error("error during find equipment ID", equipment.ID)
+			logger.Log.WithError(err).Error("error during find equipment ID", line.EquipmentID)
 			return nil, err
 		}
 
 		equipmentOption, err := s.equipmentRepo.FindOptionByID(line.EquipmentOptionID)
 		if err != nil {
-			logger.Log.WithError(err).Error("error during find equipmentOption ID", equipmentOption.ID)
+			logger.Log.WithError(err).Error("error during find equipmentOption ID", line.EquipmentOptionID)
 			return nil, err
 		}
 
-		img := helper.FindPrimaryImage(*equipmentOption)
+		fallback1 := fmt.Sprintf("https://placehold.co/600x400?text=%s/png",
+			strings.ReplaceAll(equipment.Name, " ", "+"))
+		imgURL1 := helper.PrimaryImageURL(*equipmentOption, fallback1)
 
 		lineTotal := float64(line.Quantity) * equipmentOption.Price
 		total += lineTotal
@@ -137,7 +139,7 @@ func (s *cartService) GetAllLineEquipmentInCart(userID uuid.UUID) (*response.Get
 			EquipmentName:   fmt.Sprintf("%v: %v", equipment.Name, equipmentOption.Name),
 			LineEquipmentID: line.ID.String(),
 			PerUnitPrice:    equipmentOption.Price,
-			ImgUrl:          img.CloudinaryPath,
+			ImgUrl:          imgURL1,
 			Quantity:        line.Quantity,
 			Total:           lineTotal,
 		})
@@ -161,7 +163,7 @@ func (s *cartService) ModifyLineEquipmentInCart(req request.CartItemPutRequest, 
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get cart for user", map[string]interface{}{"user_id": userID})
 		tx.Rollback()
-		return fmt.Errorf("failed to get cart for user %s: %v", userID, err)
+		return fmt.Errorf("failed to get cart for user %s: %w", userID, err)
 	}
 
 	cartItemsMap := make(map[uuid.UUID]model.LineEquipment)
@@ -187,7 +189,7 @@ func (s *cartService) ModifyLineEquipmentInCart(req request.CartItemPutRequest, 
 		if err != nil {
 			tx.Rollback()
 			logger.Log.WithError(err).Error("error finding equipment option")
-			return fmt.Errorf("failed to find equipment option with id %v: %v", cartItem.EquipmentOptionID, err)
+			return fmt.Errorf("failed to find equipment option with id %v: %w", cartItem.EquipmentOptionID, err)
 		}
 
 		if eqOpt.RemainingProducts < item.Quantity {
@@ -232,16 +234,18 @@ func (s *cartService) GetLineEquipmentsInCart(userID uuid.UUID, lineEquipmentIDs
 	for _, lineEquipment := range lineEquipments {
 		equipment, err := s.equipmentRepo.FindByID(lineEquipment.EquipmentID)
 		if err != nil {
-			logger.Log.WithError(err).Error("error during find equipment ID", equipment.ID)
+			logger.Log.WithError(err).Error("error during find equipment ID", lineEquipment.EquipmentID)
 			return nil, err
 		}
 
 		equipmentOption, err := s.equipmentRepo.FindOptionByID(lineEquipment.EquipmentOptionID)
 		if err != nil {
-			logger.Log.WithError(err).Error("error during find equipment option ID", equipmentOption.ID)
+			logger.Log.WithError(err).Error("error during find equipment option ID", lineEquipment.EquipmentOptionID)
 			return nil, err
 		}
-		img := helper.FindPrimaryImage(*equipmentOption)
+		fallback2 := fmt.Sprintf("https://placehold.co/600x400?text=%s/png",
+			strings.ReplaceAll(equipment.Name, " ", "+"))
+		imgURL2 := helper.PrimaryImageURL(*equipmentOption, fallback2)
 
 		lineTotal := float64(equipmentOption.Price) * float64(lineEquipment.Quantity)
 		total += lineTotal
@@ -249,7 +253,7 @@ func (s *cartService) GetLineEquipmentsInCart(userID uuid.UUID, lineEquipmentIDs
 		resp.LineEquipments = append(resp.LineEquipments, response.LineEquipment{
 			EquipmentName:   equipment.Name,
 			LineEquipmentID: lineEquipment.ID.String(),
-			ImgUrl:          img.CloudinaryPath,
+			ImgUrl:          imgURL2,
 			PerUnitPrice:    equipmentOption.Price,
 			Quantity:        lineEquipment.Quantity,
 			Total:           lineTotal,
