@@ -142,3 +142,6 @@ fabric.properties
 .env
 .DS_Store
 .idea
+
+# Local build output (make build)
+bin/
