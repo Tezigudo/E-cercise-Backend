@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/E-cercise/E-cercise/src/config"
 )
 
 // PostJSON sends a POST request with JSON body and returns the response body as []byte
@@ -22,6 +24,10 @@ func PostJSON(url string, payload interface{}) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	// Shared-secret auth for the internal recommender call (no-op if unset).
+	if token := config.RecommenderInternalToken; token != "" {
+		req.Header.Set("X-Internal-Token", token)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

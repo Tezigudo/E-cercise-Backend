@@ -46,6 +46,20 @@ func (c *AuthController) Login(ctx *fiber.Ctx) error {
 		})
 	}
 
+	// Also set the token as an HttpOnly cookie so browsers can authenticate
+	// without exposing it to JS (additive — the Bearer-header flow is unchanged).
+	// NOTE: a cross-origin SPA (FE :5173, BE :8888) needs SameSite=None + Secure
+	// over HTTPS for the browser to send this; behind a same-origin reverse proxy
+	// (or same-site dev) Lax suffices. See the PR for the FE-migration decisions.
+	ctx.Cookie(&fiber.Cookie{
+		Name:     "access_token",
+		Value:    *accessToken,
+		HTTPOnly: true,
+		SameSite: "Lax",
+		Path:     "/",
+		MaxAge:   3 * 60 * 60, // 3h, matches the JWT exp
+	})
+
 	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
 		"access_token": accessToken,
 	})
