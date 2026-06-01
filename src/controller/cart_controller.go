@@ -67,7 +67,7 @@ func (c *CartController) DeleteItemInCart(ctx *fiber.Ctx) error {
 	}
 
 	if count == 0 {
-		return ctx.Status(fiber.StatusNoContent).JSON(fiber.Map{"message": "this line equipment not found or have deleted"})
+		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "line equipment not found or not in your cart"})
 	}
 
 	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{"message": fmt.Sprintf("line equipment id %v has been deleted successfully", lineEquipmentID)})

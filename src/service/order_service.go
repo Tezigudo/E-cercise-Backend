@@ -153,13 +153,15 @@ func (s *orderService) GetOrderDetail(orderID uuid.UUID, user *model.User) (*res
 
 	var resp response.OrderDetailResponse
 
-	// TODO: order recipient-snapshot — store name/address/phone on the order row at
-	// placement time so that GetOrderDetail returns the address-at-purchase, not the
-	// current user profile (requires schema/column additions, deferred).
+	// Build the recipient block from the ORDER OWNER's profile (order.User), not the
+	// caller — otherwise an admin viewing another user's order sees their own address.
+	// TODO: snapshot name/address/phone onto the order row at checkout so this returns
+	// the address-at-purchase rather than the owner's current profile (deferred).
+	owner := order.User
 	address := response.Address{
-		FullName:    fmt.Sprintf("%s %s", user.FirstName, user.LastName),
-		AddressLine: user.Address,
-		PhoneNumber: user.PhoneNumber,
+		FullName:    fmt.Sprintf("%s %s", owner.FirstName, owner.LastName),
+		AddressLine: owner.Address,
+		PhoneNumber: owner.PhoneNumber,
 	}
 
 	var orders []response.LineEquipment
@@ -224,9 +226,12 @@ func (s *orderService) UpdateOrderStatus(orderID uuid.UUID, user *model.User) er
 			return fmt.Errorf("you can only update order if status is 'ToReceive'")
 		}
 	case enum.RoleAdmin:
-		if order.OrderStatus != enum.OrderPaid && order.OrderStatus != enum.OrderShipped {
+		// Admin advances Placed->Paid (confirm cash payment), Paid->Shipped out, and
+		// Shipped out->To Receive. (USER may only confirm receipt: To Receive->Received.)
+		// Placed->Paid MUST be allowed for some role or every order is stuck at Placed.
+		if order.OrderStatus != enum.OrderPlaced && order.OrderStatus != enum.OrderPaid && order.OrderStatus != enum.OrderShipped {
 			logger.Log.Errorf("Admin not allowed to update order in status: %v", order.OrderStatus)
-			return fmt.Errorf("admin can only update order if status is 'Paid' or 'Shipped'")
+			return fmt.Errorf("admin can only update order if status is 'Placed', 'Paid' or 'Shipped'")
 		}
 	default:
 		logger.Log.Errorf("Unauthorized role: %v", user.Role)
@@ -243,10 +248,10 @@ func (s *orderService) UpdateOrderStatus(orderID uuid.UUID, user *model.User) er
 	nextStatus, ok := statusTransaction[order.OrderStatus]
 	if !ok {
 		if order.OrderStatus == enum.OrderReceived {
-			logger.Log.WithError(err).Error("Order has already been received, no further status update possible")
+			logger.Log.Error("Order has already been received, no further status update possible")
 			return fmt.Errorf("order has already been received, no further status update possible")
 		}
-		logger.Log.WithError(err).Errorf("Invalid order status: %v", order.OrderStatus)
+		logger.Log.Errorf("Invalid order status: %v", order.OrderStatus)
 		return fmt.Errorf("invalid order status: %v", order.OrderStatus)
 	}
 
@@ -262,6 +267,9 @@ func (s *orderService) UpdateOrderStatus(orderID uuid.UUID, user *model.User) er
 // an order and returns the abbreviated display name and primary image URL.
 // Centralises the nil-image guard for GetMyOrders and GetOrderList.
 func (s *orderService) buildOrderSummary(order model.Order) (name string, imgURL string, err error) {
+	if len(order.LineEquipments) == 0 {
+		return "", "", fmt.Errorf("order %s has no line items", order.ID)
+	}
 	line := order.LineEquipments[0]
 
 	equipment, err := s.equipmentRepo.FindByID(line.EquipmentID)

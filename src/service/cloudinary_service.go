@@ -129,6 +129,16 @@ func validateFileType(fileHeader *multipart.FileHeader, allowedTypes []string) e
 			return nil
 		}
 	}
+	// http.DetectContentType has no HEIC signature (returns octet-stream). iOS
+	// camera photos are HEIC, so sniff the ISO-BMFF 'ftyp' box directly so they
+	// aren't rejected when image/heic is in the allow-list.
+	if n >= 12 && string(buf[4:8]) == "ftyp" {
+		for _, allowedType := range allowedTypes {
+			if allowedType == "image/heic" {
+				return nil
+			}
+		}
+	}
 	return fmt.Errorf("invalid file type: %s", detectedType)
 }
 

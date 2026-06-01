@@ -118,13 +118,13 @@ func (s *cartService) GetAllLineEquipmentInCart(userID uuid.UUID) (*response.Get
 
 		equipment, err := s.equipmentRepo.FindByID(line.EquipmentID)
 		if err != nil {
-			logger.Log.WithError(err).Error("error during find equipment ID", equipment.ID)
+			logger.Log.WithError(err).Error("error during find equipment ID", line.EquipmentID)
 			return nil, err
 		}
 
 		equipmentOption, err := s.equipmentRepo.FindOptionByID(line.EquipmentOptionID)
 		if err != nil {
-			logger.Log.WithError(err).Error("error during find equipmentOption ID", equipmentOption.ID)
+			logger.Log.WithError(err).Error("error during find equipmentOption ID", line.EquipmentOptionID)
 			return nil, err
 		}
 
@@ -234,13 +234,13 @@ func (s *cartService) GetLineEquipmentsInCart(userID uuid.UUID, lineEquipmentIDs
 	for _, lineEquipment := range lineEquipments {
 		equipment, err := s.equipmentRepo.FindByID(lineEquipment.EquipmentID)
 		if err != nil {
-			logger.Log.WithError(err).Error("error during find equipment ID", equipment.ID)
+			logger.Log.WithError(err).Error("error during find equipment ID", lineEquipment.EquipmentID)
 			return nil, err
 		}
 
 		equipmentOption, err := s.equipmentRepo.FindOptionByID(lineEquipment.EquipmentOptionID)
 		if err != nil {
-			logger.Log.WithError(err).Error("error during find equipment option ID", equipmentOption.ID)
+			logger.Log.WithError(err).Error("error during find equipment option ID", lineEquipment.EquipmentOptionID)
 			return nil, err
 		}
 		fallback2 := fmt.Sprintf("https://placehold.co/600x400?text=%s/png",
