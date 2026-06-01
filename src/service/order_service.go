@@ -164,10 +164,16 @@ func (s *orderService) GetOrderDetail(orderID uuid.UUID, user *model.User) (*res
 		AddressLine: order.RecipientAddress,
 		PhoneNumber: order.RecipientPhone,
 	}
+	// Per-field fallback to the owner's profile for legacy/partial orders placed
+	// before the snapshot columns existed (a fully-populated snapshot wins).
+	owner := order.User
 	if address.FullName == "" {
-		owner := order.User
 		address.FullName = fmt.Sprintf("%s %s", owner.FirstName, owner.LastName)
+	}
+	if address.AddressLine == "" {
 		address.AddressLine = owner.Address
+	}
+	if address.PhoneNumber == "" {
 		address.PhoneNumber = owner.PhoneNumber
 	}
 

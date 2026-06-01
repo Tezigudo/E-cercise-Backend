@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/E-cercise/E-cercise/src/config"
 	"github.com/E-cercise/E-cercise/src/data/request"
 	"github.com/E-cercise/E-cercise/src/service"
 	"github.com/gofiber/fiber/v2"
@@ -55,7 +56,8 @@ func (c *AuthController) Login(ctx *fiber.Ctx) error {
 		Name:     "access_token",
 		Value:    *accessToken,
 		HTTPOnly: true,
-		SameSite: "Lax",
+		Secure:   config.CookieSecure,   // COOKIE_SECURE=true in HTTPS prod
+		SameSite: config.CookieSameSite, // COOKIE_SAMESITE=None for a cross-site SPA
 		Path:     "/",
 		MaxAge:   3 * 60 * 60, // 3h, matches the JWT exp
 	})

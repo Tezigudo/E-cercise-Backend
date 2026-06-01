@@ -6,12 +6,12 @@ import (
 	"io"
 	"net/http"
 	"time"
-
-	"github.com/E-cercise/E-cercise/src/config"
 )
 
-// PostJSON sends a POST request with JSON body and returns the response body as []byte
-func PostJSON(url string, payload interface{}) ([]byte, error) {
+// PostJSON sends a POST request with a JSON body and the given extra headers,
+// returning the response body as []byte. Headers are passed PER CALL so a
+// secret meant for one target isn't broadcast to every PostJSON destination.
+func PostJSON(url string, payload interface{}, headers map[string]string) ([]byte, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	bodyBytes, err := json.Marshal(payload)
@@ -24,9 +24,8 @@ func PostJSON(url string, payload interface{}) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	// Shared-secret auth for the internal recommender call (no-op if unset).
-	if token := config.RecommenderInternalToken; token != "" {
-		req.Header.Set("X-Internal-Token", token)
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
 	resp, err := client.Do(req)
