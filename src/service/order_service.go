@@ -60,11 +60,14 @@ func (s *orderService) CreateOrder(req request.PlaceOrderCartRequest, user *mode
 	}
 
 	order := &model.Order{
-		UserID:          user.ID,
-		DeliveryAddress: req.Address,
-		LineEquipments:  []model.LineEquipment{},
-		OrderStatus:     enum.OrderPlaced,
-		PaymentType:     req.PaymentType,
+		UserID:           user.ID,
+		DeliveryAddress:  req.Address,
+		RecipientName:    fmt.Sprintf("%s %s", user.FirstName, user.LastName),
+		RecipientPhone:   user.PhoneNumber,
+		RecipientAddress: req.Address,
+		LineEquipments:   []model.LineEquipment{},
+		OrderStatus:      enum.OrderPlaced,
+		PaymentType:      req.PaymentType,
 	}
 
 	if order.PaymentType == enum.PaymentTypeCreditOrDebitCard {
@@ -153,15 +156,25 @@ func (s *orderService) GetOrderDetail(orderID uuid.UUID, user *model.User) (*res
 
 	var resp response.OrderDetailResponse
 
-	// Build the recipient block from the ORDER OWNER's profile (order.User), not the
-	// caller — otherwise an admin viewing another user's order sees their own address.
-	// TODO: snapshot name/address/phone onto the order row at checkout so this returns
-	// the address-at-purchase rather than the owner's current profile (deferred).
-	owner := order.User
+	// Prefer the recipient SNAPSHOT captured at checkout (address-at-purchase).
+	// Fall back to the order owner's current profile for legacy orders placed
+	// before the snapshot columns existed.
 	address := response.Address{
-		FullName:    fmt.Sprintf("%s %s", owner.FirstName, owner.LastName),
-		AddressLine: owner.Address,
-		PhoneNumber: owner.PhoneNumber,
+		FullName:    order.RecipientName,
+		AddressLine: order.RecipientAddress,
+		PhoneNumber: order.RecipientPhone,
+	}
+	// Per-field fallback to the owner's profile for legacy/partial orders placed
+	// before the snapshot columns existed (a fully-populated snapshot wins).
+	owner := order.User
+	if address.FullName == "" {
+		address.FullName = fmt.Sprintf("%s %s", owner.FirstName, owner.LastName)
+	}
+	if address.AddressLine == "" {
+		address.AddressLine = owner.Address
+	}
+	if address.PhoneNumber == "" {
+		address.PhoneNumber = owner.PhoneNumber
 	}
 
 	var orders []response.LineEquipment

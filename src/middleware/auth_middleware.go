@@ -9,21 +9,27 @@ import (
 	"strings"
 )
 
+// bearerToken returns the JWT from the "Authorization: Bearer <t>" header,
+// falling back to the HttpOnly "access_token" cookie set at login. The header
+// path is unchanged for API clients; the cookie path lets browsers authenticate
+// without exposing the token to JavaScript.
+func bearerToken(ctx *fiber.Ctx) string {
+	if authHeader := ctx.Get("Authorization"); authHeader != "" {
+		parts := strings.Split(authHeader, " ")
+		if len(parts) == 2 && parts[0] == "Bearer" {
+			return parts[1]
+		}
+		return ""
+	}
+	return ctx.Cookies("access_token")
+}
+
 func Authentication(userRepo repository.UserRepository) fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
-		authHeader := ctx.Get("Authorization")
-
-		if authHeader == "" {
-			return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Authorization header is missing"})
+		tokenString := bearerToken(ctx)
+		if tokenString == "" {
+			return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing authentication token"})
 		}
-
-		authToken := strings.Split(authHeader, " ")
-
-		if len(authToken) != 2 || authToken[0] != "Bearer" {
-			return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token format"})
-		}
-
-		tokenString := authToken[1]
 		claims, err := helper.GetClaimFromToken(tokenString)
 
 		if err != nil {
@@ -68,25 +74,14 @@ func RoleAuthorization(allowedRoles ...enum.Role) fiber.Handler {
 
 func OptionalAuthentication(userRepo repository.UserRepository) fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
-		// 1) Check the Authorization header
-		authHeader := ctx.Get("Authorization")
-		if authHeader == "" {
-			// No token is provided, skip the user check
-			// Let the request continue without a user
+		// Token from the Authorization header or the access_token cookie.
+		tokenString := bearerToken(ctx)
+		if tokenString == "" {
+			// No token provided — continue unauthenticated.
 			return ctx.Next()
 		}
 
-		// 2) Split out "Bearer" and the token
-		authToken := strings.Split(authHeader, " ")
-		if len(authToken) != 2 || authToken[0] != "Bearer" {
-			// If token is malformed, still skip *failing*
-			// so we do not block unauthenticated usage
-			return ctx.Next()
-		}
-
-		tokenString := authToken[1]
-
-		// 3) Attempt to parse the token
+		// Attempt to parse the token
 		claims, err := helper.GetClaimFromToken(tokenString)
 		if err != nil {
 			// Token is invalid, but we do not throw an error

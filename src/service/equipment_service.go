@@ -101,7 +101,11 @@ func (s *equipmentService) GetRecommendEquipmentData(user *model.User) (*respons
 	}
 
 	recommenderURL := fmt.Sprintf("%s/recommend", config.RecommendationServiceBaseUrl)
-	res, err := helper.PostJSON(recommenderURL, payload)
+	recHeaders := map[string]string{}
+	if config.RecommenderInternalToken != "" {
+		recHeaders["X-Internal-Token"] = config.RecommenderInternalToken
+	}
+	res, err := helper.PostJSON(recommenderURL, payload, recHeaders)
 	if err != nil {
 		logger.Log.WithError(err).Error("failed to call recommender service")
 		return nil, err
