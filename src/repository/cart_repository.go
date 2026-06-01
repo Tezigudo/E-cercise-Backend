@@ -12,7 +12,7 @@ import (
 
 type CartRepository interface {
 	AddLineItem(userID uuid.UUID, lineEquipment *model.LineEquipment) error
-	DeleteLineItem(lineEquipmentID uuid.UUID) (int64, error)
+	DeleteLineItem(userID uuid.UUID, lineEquipmentID uuid.UUID) (int64, error)
 	GetCart(userID uuid.UUID) (*model.Cart, error)
 	ModifyLineItem(tx *gorm.DB, lineEquipmentID uuid.UUID, quantity int) error
 	ClearAllLineItems(userID uuid.UUID) error
@@ -47,9 +47,11 @@ func (r *cartRepository) AddLineItem(userID uuid.UUID, lineEquipment *model.Line
 	return nil
 }
 
-func (r *cartRepository) DeleteLineItem(lineEquipmentID uuid.UUID) (int64, error) {
-	res := r.db.Delete(model.LineEquipment{}, lineEquipmentID)
-
+func (r *cartRepository) DeleteLineItem(userID uuid.UUID, lineEquipmentID uuid.UUID) (int64, error) {
+	res := r.db.Where(
+		"id = ? AND cart_id = (SELECT id FROM carts WHERE user_id = ?)",
+		lineEquipmentID, userID,
+	).Delete(&model.LineEquipment{})
 	return res.RowsAffected, res.Error
 }
 

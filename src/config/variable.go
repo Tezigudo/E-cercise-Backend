@@ -35,7 +35,7 @@ func Init() {
 	DatabaseName = getEnv("DATABASE_NAME", "crud")
 	JwtSecret = getEnv("JWT_SECRET", "secret")
 	FrontendBaseURL = getEnv("FRONTEND_BASE_URL", "localhost:5173")
-	RecommendationServiceBaseUrl = getEnv("RECOMMENDATION_SERVICE_BASE_URL", "localhost:8080")
+	RecommendationServiceBaseUrl = getEnv("RECOMMENDATION_SERVICE_BASE_URL", "http://localhost:8000")
 	CloudinaryCloudName = getEnv("CLOUDINARY_CLOUD_NAME", "")
 	CloudinaryApiKey = getEnv("CLOUDINARY_API_KEY", "")
 	CloudinaryApiSecret = getEnv("CLOUDINARY_API_SECRET", "")

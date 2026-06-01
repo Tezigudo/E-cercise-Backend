@@ -32,10 +32,8 @@ func (c *AuthController) UserRegister(ctx *fiber.Ctx) error {
 }
 
 func (c *AuthController) Login(ctx *fiber.Ctx) error {
-
-	var loginBody request.LoginRequest
-
-	if err := ctx.BodyParser(&loginBody); err != nil {
+	loginBody, ok := ctx.Locals("loginBody").(request.LoginRequest)
+	if !ok {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request data",
 		})
@@ -43,8 +41,8 @@ func (c *AuthController) Login(ctx *fiber.Ctx) error {
 
 	accessToken, err := c.UserService.LoginUser(loginBody)
 	if err != nil {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "invalid credentials",
 		})
 	}
 

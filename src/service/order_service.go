@@ -51,7 +51,7 @@ func (s *orderService) CreateOrder(req request.PlaceOrderCartRequest, user *mode
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get cart for user", map[string]interface{}{"user_id": user.ID})
 		tx.Rollback()
-		return nil, fmt.Errorf("failed to get cart for user %s: %v", user.ID, err)
+		return nil, fmt.Errorf("failed to get cart for user %s: %w", user.ID, err)
 	}
 
 	cartItemsMap := make(map[uuid.UUID]model.LineEquipment)
@@ -74,7 +74,7 @@ func (s *orderService) CreateOrder(req request.PlaceOrderCartRequest, user *mode
 	if err := s.orderRepo.CreateOrder(tx, order); err != nil {
 		tx.Rollback()
 		logger.Log.WithError(err).Error("Failed to create order", map[string]interface{}{"order_id": order.ID})
-		return nil, fmt.Errorf("failed to create order: %v", err)
+		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
 
 	var totalPrice float64
@@ -92,7 +92,7 @@ func (s *orderService) CreateOrder(req request.PlaceOrderCartRequest, user *mode
 		if err != nil {
 			logger.Log.WithError(err).Error("Failed to fetch equipment option", map[string]interface{}{"equipment_option_id": cartItem.EquipmentOptionID})
 			tx.Rollback()
-			return nil, fmt.Errorf("failed to fetch equipment option %s: %v", cartItem.EquipmentOptionID, err)
+			return nil, fmt.Errorf("failed to fetch equipment option %s: %w", cartItem.EquipmentOptionID, err)
 		}
 
 		// Atomic, contention-safe decrement. The WHERE guards against two
@@ -117,7 +117,7 @@ func (s *orderService) CreateOrder(req request.PlaceOrderCartRequest, user *mode
 		if err := tx.Save(&cartItem).Error; err != nil {
 			logger.Log.WithError(err).Error("Failed to update cart item to order item", map[string]interface{}{"cart_item_id": cartItem.ID})
 			tx.Rollback()
-			return nil, fmt.Errorf("failed to update cart item to order item: %v", err)
+			return nil, fmt.Errorf("failed to update cart item to order item: %w", err)
 		}
 		logger.Log.Info("Updated cart item to be part of the order", map[string]interface{}{"cart_item_id": cartItem.ID, "order_id": order.ID})
 	}
@@ -126,7 +126,7 @@ func (s *orderService) CreateOrder(req request.PlaceOrderCartRequest, user *mode
 	if err := s.orderRepo.SaveOrder(tx, order); err != nil {
 		tx.Rollback()
 		logger.Log.WithError(err).Error("Failed to save order", map[string]interface{}{"order_id": order.ID})
-		return nil, fmt.Errorf("failed to save order: %v", err)
+		return nil, fmt.Errorf("failed to save order: %w", err)
 	}
 
 	logger.Log.Info("Order created successfully", map[string]interface{}{"order_id": order.ID, "total_price": totalPrice})
@@ -147,8 +147,15 @@ func (s *orderService) GetOrderDetail(orderID uuid.UUID, user *model.User) (*res
 		return nil, fmt.Errorf("failed to get order detail")
 	}
 
+	if user.Role == enum.RoleUser && order.UserID != user.ID {
+		return nil, fmt.Errorf("order not found")
+	}
+
 	var resp response.OrderDetailResponse
 
+	// TODO: order recipient-snapshot — store name/address/phone on the order row at
+	// placement time so that GetOrderDetail returns the address-at-purchase, not the
+	// current user profile (requires schema/column additions, deferred).
 	address := response.Address{
 		FullName:    fmt.Sprintf("%s %s", user.FirstName, user.LastName),
 		AddressLine: user.Address,
@@ -207,29 +214,29 @@ func (s *orderService) UpdateOrderStatus(orderID uuid.UUID, user *model.User) er
 	}
 
 	switch user.Role {
-		case enum.RoleUser:
-			if order.UserID != user.ID {
-				logger.Log.Errorf("User %v tried to update order %v not owned by them", user.ID, order.ID)
-				return fmt.Errorf("you are not allowed to update this order")
-			}
-			if order.OrderStatus != enum.OrderPlaced && order.OrderStatus != enum.OrderToReceive {
-				logger.Log.Errorf("User %v not allowed to update order in status: %v", user.ID, order.OrderStatus)
-				return fmt.Errorf("you can only update order if status is 'Placed' or 'ToReceive'")
-			}
-		case enum.RoleAdmin:
-			if order.OrderStatus != enum.OrderPaid && order.OrderStatus != enum.OrderShipped {
-				logger.Log.Errorf("Admin not allowed to update order in status: %v", order.OrderStatus)
-				return fmt.Errorf("admin can only update order if status is 'Paid' or 'Shipped'")
-			}
-		default:
-			logger.Log.Errorf("Unauthorized role: %v", user.Role)
-			return fmt.Errorf("unauthorized role")
+	case enum.RoleUser:
+		if order.UserID != user.ID {
+			logger.Log.Errorf("User %v tried to update order %v not owned by them", user.ID, order.ID)
+			return fmt.Errorf("you are not allowed to update this order")
+		}
+		if order.OrderStatus != enum.OrderToReceive {
+			logger.Log.Errorf("User %v not allowed to update order in status: %v", user.ID, order.OrderStatus)
+			return fmt.Errorf("you can only update order if status is 'ToReceive'")
+		}
+	case enum.RoleAdmin:
+		if order.OrderStatus != enum.OrderPaid && order.OrderStatus != enum.OrderShipped {
+			logger.Log.Errorf("Admin not allowed to update order in status: %v", order.OrderStatus)
+			return fmt.Errorf("admin can only update order if status is 'Paid' or 'Shipped'")
+		}
+	default:
+		logger.Log.Errorf("Unauthorized role: %v", user.Role)
+		return fmt.Errorf("unauthorized role")
 	}
 
 	statusTransaction := map[enum.OrderStatus]enum.OrderStatus{
-		enum.OrderPlaced:  enum.OrderPaid,
-		enum.OrderPaid:    enum.OrderShipped,
-		enum.OrderShipped: enum.OrderToReceive,
+		enum.OrderPlaced:    enum.OrderPaid,
+		enum.OrderPaid:      enum.OrderShipped,
+		enum.OrderShipped:   enum.OrderToReceive,
 		enum.OrderToReceive: enum.OrderReceived,
 	}
 
@@ -251,6 +258,31 @@ func (s *orderService) UpdateOrderStatus(orderID uuid.UUID, user *model.User) er
 	return nil
 }
 
+// buildOrderSummary fetches the equipment and option for the first line item of
+// an order and returns the abbreviated display name and primary image URL.
+// Centralises the nil-image guard for GetMyOrders and GetOrderList.
+func (s *orderService) buildOrderSummary(order model.Order) (name string, imgURL string, err error) {
+	line := order.LineEquipments[0]
+
+	equipment, err := s.equipmentRepo.FindByID(line.EquipmentID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get equipment")
+		return "", "", fmt.Errorf("failed to get equipment")
+	}
+
+	equipmentOpt, err := s.equipmentRepo.FindOptionByID(line.EquipmentOptionID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get equipment option")
+		return "", "", fmt.Errorf("failed to get equipment option")
+	}
+
+	fallback := fmt.Sprintf("https://placehold.co/600x400?text=%s/png",
+		strings.ReplaceAll(equipment.Name, " ", "+"))
+	imgURL = helper.PrimaryImageURL(*equipmentOpt, fallback)
+	name = helper.AbbreviateEquipmentName(equipment.Name, equipmentOpt.Name)
+	return name, imgURL, nil
+}
+
 func (s *orderService) GetMyOrders(userID uuid.UUID, orderStatus enum.OrderStatus) (*response.MyOrderResponse, error) {
 	orders, err := s.orderRepo.FindByStatus(userID, orderStatus)
 	if err != nil {
@@ -261,37 +293,26 @@ func (s *orderService) GetMyOrders(userID uuid.UUID, orderStatus enum.OrderStatu
 	var resp response.MyOrderResponse
 
 	if len(orders) == 0 {
-		logger.Log.WithError(err).Error("No orders found")
 		return &resp, nil
 	}
 
 	for _, order := range orders {
 		logger.Log.Info(fmt.Sprintf("Order with ID: %s with Status: %s", order.ID, order.OrderStatus))
-		// Guard against orders with no line items (else LineEquipments[0]
-		// panics -> 500). The admin GetOrderList already skips these.
 		if len(order.LineEquipments) == 0 {
 			logger.Log.Warn(fmt.Sprintf("Order ID %s has no line items, skipping", order.ID))
 			continue
 		}
-		equipment, err := s.equipmentRepo.FindByID(order.LineEquipments[0].EquipmentID)
-		if err != nil {
-			logger.Log.WithError(err).Error("Failed to get equipment")
-			return nil, fmt.Errorf("failed to get equipment")
-		}
 
-		equipmentOpt, err := s.equipmentRepo.FindOptionByID(order.LineEquipments[0].EquipmentOptionID)
+		name, imgURL, err := s.buildOrderSummary(order)
 		if err != nil {
-			logger.Log.WithError(err).Error("Failed to get equipment option")
-			return nil, fmt.Errorf("failed to get equipment option")
+			return nil, err
 		}
-
-		img := helper.FindPrimaryImage(*equipmentOpt)
 
 		orderResp := response.Order{
 			CreatedAt: order.CreatedAt.Format("2006-01-02 15:04:05"),
 			FirstLineEquipment: response.FirstLineEquipment{
-				ImgURL: img.CloudinaryPath,
-				Name:   helper.AbbreviateEquipmentName(equipment.Name, equipmentOpt.Name),
+				ImgURL: imgURL,
+				Name:   name,
 			},
 			ID:          order.ID,
 			OrderStatus: order.OrderStatus,
@@ -315,7 +336,6 @@ func (s *orderService) GetOrderList(q request.OrderListRequest) (*response.Order
 	var resp response.OrderListResponse
 
 	if len(orders) == 0 {
-		logger.Log.WithError(err).Error("No orders found")
 		return &resp, nil
 	}
 
@@ -327,25 +347,16 @@ func (s *orderService) GetOrderList(q request.OrderListRequest) (*response.Order
 			continue
 		}
 
-		equipment, err := s.equipmentRepo.FindByID(order.LineEquipments[0].EquipmentID)
+		name, imgURL, err := s.buildOrderSummary(order)
 		if err != nil {
-			logger.Log.WithError(err).Error("Failed to get equipment")
-			return nil, fmt.Errorf("failed to get equipment")
+			return nil, err
 		}
-
-		equipmentOpt, err := s.equipmentRepo.FindOptionByID(order.LineEquipments[0].EquipmentOptionID)
-		if err != nil {
-			logger.Log.WithError(err).Error("Failed to get equipment option")
-			return nil, fmt.Errorf("failed to get equipment option")
-		}
-
-		img := helper.FindPrimaryImage(*equipmentOpt)
 
 		orderResp := response.OrderList{
 			CreatedAt: order.CreatedAt.Format("2006-01-02 15:04:05"),
 			FirstLineEquipment: response.FirstLineEquipment{
-				ImgURL: img.CloudinaryPath,
-				Name:   helper.AbbreviateEquipmentName(equipment.Name, equipmentOpt.Name),
+				ImgURL: imgURL,
+				Name:   name,
 			},
 			ID:          order.ID,
 			UserID:      order.UserID,

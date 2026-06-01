@@ -10,7 +10,7 @@ import (
 
 // PostJSON sends a POST request with JSON body and returns the response body as []byte
 func PostJSON(url string, payload interface{}) ([]byte, error) {
-	client := &http.Client{Timeout: 10 * time.Minute}
+	client := &http.Client{Timeout: 5 * time.Second}
 
 	bodyBytes, err := json.Marshal(payload)
 	if err != nil {

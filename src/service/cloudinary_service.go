@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+
 	"github.com/E-cercise/E-cercise/src/config"
 	"github.com/E-cercise/E-cercise/src/logger"
 	"github.com/cloudinary/cloudinary-go/v2"
@@ -30,7 +33,7 @@ func NewCloudinaryService() (CloudinaryService, error) {
 	// Initialize Cloudinary instance
 	cld, err := cloudinary.NewFromParams(config.CloudinaryCloudName, config.CloudinaryApiKey, config.CloudinaryApiSecret)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Cloudinary: %v", err)
+		return nil, fmt.Errorf("failed to initialize Cloudinary: %w", err)
 	}
 
 	return &cloudinaryService{cloudinary: cld}, nil
@@ -41,13 +44,13 @@ func (s *cloudinaryService) UploadImage(ctx context.Context, file multipart.File
 	// Validate file type
 	allowedTypes := []string{"image/jpeg", "image/png", "image/heic"}
 	if err := validateFileType(fileHeader, allowedTypes); err != nil {
-		return "", fmt.Errorf("file validation failed: %v", err)
+		return "", fmt.Errorf("file validation failed: %w", err)
 	}
 
 	// Validate file size
 	const maxFileSize = 5 * 1024 * 1024 // 5 MB
 	if err := validateFileSize(fileHeader, maxFileSize); err != nil {
-		return "", fmt.Errorf("file validation failed: %v", err)
+		return "", fmt.Errorf("file validation failed: %w", err)
 	}
 
 	// Upload parameters
@@ -61,7 +64,7 @@ func (s *cloudinaryService) UploadImage(ctx context.Context, file multipart.File
 	// Upload the file
 	resp, err := s.cloudinary.Upload.Upload(ctx, file, uploadParams)
 	if err != nil {
-		return "", fmt.Errorf("failed to upload image: %v", err)
+		return "", fmt.Errorf("failed to upload image: %w", err)
 	}
 
 	if resp.Error.Message != "" {
@@ -82,7 +85,7 @@ func (s *cloudinaryService) DeleteImage(ctx context.Context, publicID string) er
 		PublicID: publicID,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to delete image: %v", err)
+		return fmt.Errorf("failed to delete image: %w", err)
 	}
 
 	return nil
@@ -96,7 +99,7 @@ func (s *cloudinaryService) MoveImage(ctx context.Context, fromPublicID, toPubli
 		ToPublicID:   toPublicID,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to move image: %v", err)
+		return fmt.Errorf("failed to move image: %w", err)
 	}
 
 	if resp.Error != nil && resp.Error != "" {
@@ -108,13 +111,25 @@ func (s *cloudinaryService) MoveImage(ctx context.Context, fromPublicID, toPubli
 }
 
 func validateFileType(fileHeader *multipart.FileHeader, allowedTypes []string) error {
-	contentType := fileHeader.Header.Get("Content-Type")
+	f, err := fileHeader.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open file for type detection: %w", err)
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	n, err := io.ReadAtLeast(f, buf, 1)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return fmt.Errorf("failed to read file for type detection: %w", err)
+	}
+	detectedType := http.DetectContentType(buf[:n])
+
 	for _, allowedType := range allowedTypes {
-		if contentType == allowedType {
+		if detectedType == allowedType {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid file type: %s", contentType)
+	return fmt.Errorf("invalid file type: %s", detectedType)
 }
 
 func validateFileSize(fileHeader *multipart.FileHeader, maxSize int64) error {

@@ -85,11 +85,10 @@ func (c *EquipmentController) GetAllEquipments(ctx *fiber.Ctx) error {
 		} else if user.Role == enum.RoleUser {
 			recommendationEquipments, err := c.EquipmentService.GetRecommendEquipmentData(user)
 			if err != nil {
-				return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"error": err.Error(),
-				})
+				logger.Log.WithError(err).Warn("recommender service unavailable, omitting recommendations")
+			} else {
+				resp["recommendation_equipments"] = &recommendationEquipments
 			}
-			resp["recommendation_equipments"] = &recommendationEquipments
 		}
 	}
 	return ctx.Status(fiber.StatusOK).JSON(resp)

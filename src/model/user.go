@@ -23,7 +23,7 @@ type User struct {
 	Age        int                 `gorm:"type:int;not null" json:"age"`
 
 	GoalID *uuid.UUID `gorm:"type:uuid" json:"goal_id,omitempty"`
-	Goal   Goal      `gorm:"foreignKey:GoalID" json:"goal,omitempty"`
+	Goal   Goal       `gorm:"foreignKey:GoalID" json:"goal,omitempty"`
 
 	UserPreferences []UserPreference `gorm:"foreignKey:UserID" json:"user_preferences"`
 	Orders          []Order          `gorm:"foreignKey:UserID" json:"orders"`
