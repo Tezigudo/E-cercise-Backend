@@ -15,7 +15,7 @@ type RegisterRequest struct {
 	Weight      float64             `json:"weight"`
 	Height      float64             `json:"height"`
 	Experience  enum.UserExperience `json:"experience"`
-	GoalID      uuid.UUID           `json:"goal_id"`
+	GoalID      *uuid.UUID          `json:"goal_id"`
 	Preferences []uuid.UUID         `json:"preferences"`
 	Gender      enum.Gender         `json:"gender"`
 	Age         int                 `json:"age"`

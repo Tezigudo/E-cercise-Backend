@@ -95,11 +95,20 @@ func (s *orderService) CreateOrder(req request.PlaceOrderCartRequest, user *mode
 			return nil, fmt.Errorf("failed to fetch equipment option %s: %v", cartItem.EquipmentOptionID, err)
 		}
 
-		equipmentOption.RemainingProducts -= cartItem.Quantity
-		if err := tx.Save(equipmentOption).Error; err != nil {
-			logger.Log.WithError(err).Error("Failed to update inventory", map[string]interface{}{"equipment_option_id": cartItem.EquipmentOptionID})
+		// Atomic, contention-safe decrement. The WHERE guards against two
+		// concurrent checkouts both passing a read-time stock check and
+		// overselling; RowsAffected == 0 means the stock ran out in between.
+		result := tx.Model(&model.EquipmentOption{}).
+			Where("id = ? AND remaining_products >= ?", cartItem.EquipmentOptionID, cartItem.Quantity).
+			UpdateColumn("remaining_products", gorm.Expr("remaining_products - ?", cartItem.Quantity))
+		if result.Error != nil {
+			logger.Log.WithError(result.Error).Error("Failed to update inventory", map[string]interface{}{"equipment_option_id": cartItem.EquipmentOptionID})
 			tx.Rollback()
-			return nil, fmt.Errorf("failed to update inventory: %v", err)
+			return nil, fmt.Errorf("failed to update inventory: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			tx.Rollback()
+			return nil, fmt.Errorf("insufficient stock for option %s", cartItem.EquipmentOptionID)
 		}
 
 		totalPrice += float64(cartItem.Quantity) * equipmentOption.Price
@@ -192,7 +201,6 @@ func (s *orderService) GetOrderDetail(orderID uuid.UUID, user *model.User) (*res
 
 func (s *orderService) UpdateOrderStatus(orderID uuid.UUID, user *model.User) error {
 	order, err := s.orderRepo.FindByID(orderID)
-	fmt.Println(order.OrderStatus)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get order detail")
 		return fmt.Errorf("failed to get order detail")
@@ -259,6 +267,12 @@ func (s *orderService) GetMyOrders(userID uuid.UUID, orderStatus enum.OrderStatu
 
 	for _, order := range orders {
 		logger.Log.Info(fmt.Sprintf("Order with ID: %s with Status: %s", order.ID, order.OrderStatus))
+		// Guard against orders with no line items (else LineEquipments[0]
+		// panics -> 500). The admin GetOrderList already skips these.
+		if len(order.LineEquipments) == 0 {
+			logger.Log.Warn(fmt.Sprintf("Order ID %s has no line items, skipping", order.ID))
+			continue
+		}
 		equipment, err := s.equipmentRepo.FindByID(order.LineEquipments[0].EquipmentID)
 		if err != nil {
 			logger.Log.WithError(err).Error("Failed to get equipment")

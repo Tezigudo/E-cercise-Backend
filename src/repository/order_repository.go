@@ -35,7 +35,10 @@ func (r *orderRepository) SaveOrder(tx *gorm.DB, order *model.Order) error {
 
 func (r *orderRepository) FindByID(orderID uuid.UUID) (*model.Order, error) {
 	var order model.Order
-	err := r.db.Preload("LineEquipments").Find(&order, "id = ?", orderID).Error
+	// First (not Find): a missing order must surface gorm.ErrRecordNotFound so
+	// callers can return 404. Find leaves a zero-value Order with a nil error,
+	// which leaks an empty 200 stub for non-existent IDs.
+	err := r.db.Preload("LineEquipments").First(&order, "id = ?", orderID).Error
 	return &order, err
 }
 
@@ -46,12 +49,21 @@ func (r *orderRepository) UpdateOrderStatusByID(orderID uuid.UUID, orderStatus e
 
 func (r *orderRepository) FindByStatus(userID uuid.UUID, orderStatus enum.OrderStatus) ([]model.Order, error) {
 	var orders []model.Order
-	err := r.db.
+	query := r.db.
 		Preload("LineEquipments").
 		Preload("LineEquipments.EquipmentOption").
-		Where("user_id = ? AND order_status = ?", userID, orderStatus).
-		Find(&orders).Error
-	if err != nil {
+		Where("user_id = ?", userID)
+
+	// Only filter by status when one is actually requested. An empty
+	// OrderStatus ("") is NOT a valid value for the Postgres order_status enum,
+	// so applying it unconditionally throws SQLSTATE 22P02 — the GET /order/me
+	// 500 that fires whenever the "all orders" view sends no status filter.
+	// Mirrors the nil-guard the admin FindOrderList already has.
+	if orderStatus != "" {
+		query = query.Where("order_status = ?", orderStatus)
+	}
+
+	if err := query.Find(&orders).Error; err != nil {
 		return nil, err
 	}
 	return orders, nil

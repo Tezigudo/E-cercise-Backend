@@ -22,7 +22,7 @@ type User struct {
 	Gender     enum.Gender         `gorm:"type:gender_type;not null" json:"gender"`
 	Age        int                 `gorm:"type:int;not null" json:"age"`
 
-	GoalID uuid.UUID `gorm:"type:uuid" json:"goal_id,omitempty"`
+	GoalID *uuid.UUID `gorm:"type:uuid" json:"goal_id,omitempty"`
 	Goal   Goal      `gorm:"foreignKey:GoalID" json:"goal,omitempty"`
 
 	UserPreferences []UserPreference `gorm:"foreignKey:UserID" json:"user_preferences"`
